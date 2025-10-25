@@ -1,4 +1,5 @@
 # Dummy app with example secrets for testing gitleaks
+# this is for testing purposes only
 
 API_KEY = "sk_live_4eXampl3SkrYt3xAmpl3S3cr3tKey"
 AWS_ACCESS_KEY_ID = "AKIAEXAMPLEACCESSKEY00"
