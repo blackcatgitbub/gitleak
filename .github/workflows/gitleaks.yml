@@ -1,0 +1,100 @@
+name: Gitleaks Security Scan
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  gitleaks:
+    name: Detect Secrets
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Run Gitleaks
+        id: gitleaks
+        run: |
+          gitleaks detect \
+            --source . \
+            --report-format json \
+            --report-path gitleaks-report.json \
+            --verbose \
+            --no-git || echo "SECRETS_FOUND=true" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Display Results
+        if: always()
+        run: |
+          if [ -f gitleaks-report.json ]; then
+            # Install jq for JSON parsing
+            sudo apt-get update && sudo apt-get install -y jq
+            
+            # Count secrets
+            SECRET_COUNT=$(jq 'length' gitleaks-report.json)
+            
+            if [ "$SECRET_COUNT" -gt 0 ]; then
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "❌ FOUND $SECRET_COUNT SECRET(S) IN YOUR CODE!"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              echo "📋 DETAILED FINDINGS:"
+              echo ""
+              
+              # Display each finding
+              jq -r '.[] | "┌─────────────────────────────────────────────\n│ 🔴 \(.RuleID)\n├─────────────────────────────────────────────\n│ 📁 File: \(.File)\n│ 📍 Line: \(.StartLine)\n│ 🔑 Secret: \(.Secret[0:20])***\n│ 👤 Author: \(.Author // "N/A")\n│ 📅 Date: \(.Date // "N/A")\n└─────────────────────────────────────────────\n"' gitleaks-report.json
+              
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "📁 FILES AFFECTED:"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              jq -r '.[].File' gitleaks-report.json | sort -u | while read file; do
+                echo "  ❌ $file"
+              done
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "⚠️  IMMEDIATE ACTION REQUIRED:"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "  1. Remove secrets from the files listed above"
+              echo "  2. Use environment variables instead"
+              echo "  3. Rotate any exposed credentials"
+              echo "  4. Never commit secrets to git"
+              echo ""
+              echo "💡 Example fix:"
+              echo "  ❌ const API_KEY = 'sk_live_1234567890'"
+              echo "  ✅ const API_KEY = process.env.API_KEY"
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+              exit 1
+            else
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "✅ NO SECRETS DETECTED"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              echo "🎉 Security scan passed successfully!"
+              echo "✅ No hardcoded credentials found"
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            fi
+          else
+            echo "✅ No secrets report generated - repository is clean!"
+          fi
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-security-report
+          path: gitleaks-report.json
+          if-no-files-found: ignore
