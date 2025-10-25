@@ -2,7 +2,7 @@ name: Gitleaks Security Scan
 
 on:
   pull_request:
-    branches: [main, master, develop]
+    branches: [main]
 
 jobs:
   gitleaks:
